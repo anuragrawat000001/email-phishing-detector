@@ -19,15 +19,3 @@ A machine learning-based email phishing detector that identifies and classifies 
 
 ### Setup
 
-1. Clone the repository:
-```bash
-git clone https://github.com/anuragrawat000001/email-phishing-detector.git
-cd email-phishing-detector
-pip install -r requirements.txt
-email-phishing-detector/
-├── detector.py          # Main ML model class
-├── demo.py              # Demo script with test cases
-├── requirements.txt     # Python dependencies
-├── README.md            # Documentation
-├── LICENSE              # MIT License
-└── .gitignore           # Git ignore file
