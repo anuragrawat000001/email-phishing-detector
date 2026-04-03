@@ -1,106 +1,140 @@
-import pickle
-import re
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.naive_bayes import MultinomialNB
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-import os
+from detector import PhishingDetector
 
-class PhishingDetector:
-    def __init__(self):
-        self.vectorizer = TfidfVectorizer(max_features=1000, stop_words='english')
-        self.model = MultinomialNB()
-        self.is_trained = False
-        self.phishing_keywords = [
-            'verify', 'confirm', 'click here', 'urgent', 'immediately', 'action required',
-            'account locked', 'suspended', 'update payment', 'click below', 'reset password',
-            'validate', 'authenticate', 'expired', 're-enter', 'refund', 'claim', 'prize',
-            'congratulations', 'winner', 'limited time', 'act now', 'suspicious', 'unusual',
-            'unauthorized', 'http://', 'suspicious activity'
-        ]
+def main():
+    print("="*70)
+    print("EMAIL PHISHING DETECTOR - LIVE DEMO")
+    print("="*70)
     
-    def extract_features(self, email):
-        """Extract and preprocess email text features"""
-        subject = email.get('subject', '').lower()
-        body = email.get('body', '').lower()
-        sender = email.get('sender', '').lower()
-        
-        # Combine all text
-        combined_text = f"{subject} {body} {sender}"
-        
-        return combined_text
+    # Initialize detector
+    detector = PhishingDetector()
     
-    def train(self, emails, labels):
-        """Train the phishing detector model"""
-        # Extract features from all emails
-        features = [self.extract_features(email) for email in emails]
-        
-        # Vectorize the text data
-        X = self.vectorizer.fit_transform(features)
-        
-        # Train the model
-        self.model.fit(X, labels)
-        self.is_trained = True
-        
-        print(f"✅ Model trained on {len(emails)} emails")
-    
-    def predict(self, email):
-        """Predict if an email is phishing or legitimate"""
-        if not self.is_trained:
-            self.load_model()
-        
-        # Extract features
-        features = self.extract_features(email)
-        
-        # Vectorize
-        X = self.vectorizer.transform([features])
-        
-        # Get prediction and probability
-        prediction = self.model.predict(X)[0]
-        probabilities = self.model.predict_proba(X)[0]
-        
-        # Calculate confidence
-        confidence = max(probabilities)
-        phishing_score = probabilities[1]
-        legitimate_score = probabilities[0]
-        
-        return {
-            'is_phishing': bool(prediction),
-            'prediction': 'PHISHING' if prediction else 'LEGITIMATE',
-            'confidence': confidence,
-            'phishing_score': phishing_score,
-            'legitimate_score': legitimate_score
+    # Sample legitimate emails
+    legitimate_emails = [
+        {
+            'subject': 'Your order has been confirmed',
+            'body': 'Thank you for your purchase. Your order #12345 has been confirmed and will be shipped soon.',
+            'sender': 'orders@amazon.com'
+        },
+        {
+            'subject': 'Meeting scheduled for tomorrow',
+            'body': 'Hi, this is to confirm our meeting tomorrow at 2 PM. Please find the agenda attached.',
+            'sender': 'boss@company.com'
+        },
+        {
+            'subject': 'Welcome to our service',
+            'body': 'Welcome! Your account has been created successfully. You can now log in with your credentials.',
+            'sender': 'support@gmail.com'
+        },
+        {
+            'subject': 'Invoice for January 2026',
+            'body': 'Please find the attached invoice for your January subscription. Thank you for your business.',
+            'sender': 'billing@service.com'
         }
+    ]
     
-    def evaluate(self, emails, labels):
-        """Evaluate model performance"""
-        features = [self.extract_features(email) for email in emails]
-        X = self.vectorizer.transform(features)
-        predictions = self.model.predict(X)
-        
-        return {
-            'accuracy': accuracy_score(labels, predictions),
-            'precision': precision_score(labels, predictions, zero_division=0),
-            'recall': recall_score(labels, predictions, zero_division=0),
-            'f1_score': f1_score(labels, predictions, zero_division=0)
+    # Sample phishing emails
+    phishing_emails = [
+        {
+            'subject': 'URGENT: Verify your account immediately',
+            'body': 'Click here to verify your account or it will be closed. Verify now: click-here-to-verify.com',
+            'sender': 'security@paypa1.com'
+        },
+        {
+            'subject': 'Confirm your identity to unlock account',
+            'body': 'Your account has been locked. Please confirm your identity by clicking the link and entering your password.',
+            'sender': 'noreply@bankk.com'
+        },
+        {
+            'subject': 'You have won a prize!',
+            'body': 'Congratulations! You have won $1,000,000. Click here to claim your prize and provide your banking details.',
+            'sender': 'lottery@winner.com'
+        },
+        {
+            'subject': 'Suspicious activity detected',
+            'body': 'We detected suspicious login attempts. Click here urgently to verify it is you: http://confirm-now.xyz',
+            'sender': 'alerts@paypalll.com'
         }
+    ]
     
-    def save_model(self, model_path='trained_model.pkl', vectorizer_path='vectorizer.pkl'):
-        """Save the trained model and vectorizer"""
-        with open(model_path, 'wb') as f:
-            pickle.dump(self.model, f)
-        with open(vectorizer_path, 'wb') as f:
-            pickle.dump(self.vectorizer, f)
-        print(f"✅ Model saved to {model_path} and {vectorizer_path}")
+    # Train model
+    print("\n📚 Training the model with sample data...")
+    all_emails = legitimate_emails + phishing_emails
+    labels = [0] * len(legitimate_emails) + [1] * len(phishing_emails)
     
-    def load_model(self, model_path='trained_model.pkl', vectorizer_path='vectorizer.pkl'):
-        """Load a trained model and vectorizer"""
-        try:
-            with open(model_path, 'rb') as f:
-                self.model = pickle.load(f)
-            with open(vectorizer_path, 'rb') as f:
-                self.vectorizer = pickle.load(f)
-            self.is_trained = True
-            print(f"✅ Model loaded from {model_path} and {vectorizer_path}")
-        except FileNotFoundError:
-            print(f"⚠️  Model files not found. Please train a model first.")
-            self.is_trained = False
+    detector.train(all_emails, labels)
+    detector.save_model()
+    
+    # Test on legitimate emails
+    print("\n" + "="*70)
+    print("TESTING ON LEGITIMATE EMAILS ✅")
+    print("="*70)
+    
+    for i, email in enumerate(legitimate_emails, 1):
+        result = detector.predict(email)
+        status = "✅ CORRECT" if not result['is_phishing'] else "❌ WRONG"
+        print(f"\n📧 Email {i}: {status}")
+        print(f"   Subject: {email['subject']}")
+        print(f"   Prediction: {result['prediction']}")
+        print(f"   Confidence: {result['confidence']*100:.2f}%")
+        print(f"   Scores - Phishing: {result['phishing_score']:.4f} | Legitimate: {result['legitimate_score']:.4f}")
+    
+    # Test on phishing emails
+    print("\n" + "="*70)
+    print("TESTING ON PHISHING EMAILS 🚨")
+    print("="*70)
+    
+    for i, email in enumerate(phishing_emails, 1):
+        result = detector.predict(email)
+        status = "✅ CORRECT" if result['is_phishing'] else "❌ WRONG"
+        print(f"\n📧 Email {i}: {status}")
+        print(f"   Subject: {email['subject']}")
+        print(f"   Prediction: {result['prediction']}")
+        print(f"   Confidence: {result['confidence']*100:.2f}%")
+        print(f"   Scores - Phishing: {result['phishing_score']:.4f} | Legitimate: {result['legitimate_score']:.4f}")
+    
+    # Model Evaluation
+    print("\n" + "="*70)
+    print("MODEL EVALUATION REPORT")
+    print("="*70)
+    
+    metrics = detector.evaluate(all_emails, labels)
+    print(f"\n📊 Performance Metrics:")
+    print(f"   ✅ Accuracy:  {metrics['accuracy']*100:.2f}%")
+    print(f"   ✅ Precision: {metrics['precision']*100:.2f}%")
+    print(f"   ✅ Recall:    {metrics['recall']*100:.2f}%")
+    print(f"   ✅ F1-Score:  {metrics['f1_score']:.4f}")
+    
+    print("\n" + "="*70)
+    print("🎉 DEMO COMPLETED SUCCESSFULLY!")
+    print("="*70)
+    
+    # Interactive test
+    print("\n" + "="*70)
+    print("INTERACTIVE TEST - Try your own email!")
+    print("="*70)
+    
+    test_email = {
+        'subject': 'Please update your payment information',
+        'body': 'Your payment method has expired. Click here to update it immediately before your account is suspended.',
+        'sender': 'billing@amazon-secure.com'
+    }
+    
+    print(f"\nTest Email:")
+    print(f"   Subject: {test_email['subject']}")
+    print(f"   Body: {test_email['body']}")
+    print(f"   Sender: {test_email['sender']}")
+    
+    result = detector.predict(test_email)
+    print(f"\n🔍 Result: {result['prediction']}")
+    print(f"   Confidence: {result['confidence']*100:.2f}%")
+    print(f"   Phishing Score: {result['phishing_score']:.4f}")
+    print(f"   Legitimate Score: {result['legitimate_score']:.4f}")
+    
+    if result['is_phishing']:
+        print("\n⚠️  This email shows phishing characteristics!")
+        print("   Indicators: Urgent language, payment request, suspicious domain")
+    else:
+        print("\n✅ This email appears to be legitimate")
+
+if __name__ == "__main__":
+    main()
