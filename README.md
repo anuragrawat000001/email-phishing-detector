@@ -15,14 +15,12 @@ It provides confidence scores and supports interactive CLI testing.
 ---
 
 ## 🛠 Installation
+## 🛠 Installation
 
 ```bash
 git clone https://github.com/anuragrawat000001/email-phishing-detector.git
 cd email-phishing-detector
 pip install -r requirements.txt
-```
-
----
 
 ## ▶️ Run
 
