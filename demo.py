@@ -1,4 +1,3 @@
-```python
 from detector import PhishingDetector
 
 # 🔥 Rule-based phishing detection
