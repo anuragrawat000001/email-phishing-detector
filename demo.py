@@ -38,7 +38,7 @@ def main():
     # 🔥 TRAIN USING KAGGLE DATASET
     print("\n📚 Training model using dataset...")
 
-    df = pd.read_csv("emails.csv")   # make sure this file is in same folder
+    df = pd.read_csv("CEAS_08.csv")   # make sure this file is in same folder
 
     emails = []
     labels = []
