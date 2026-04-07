@@ -24,7 +24,7 @@ class PhishingDetector:
         X = self.vectorizer.fit_transform(features)
         self.model.fit(X, labels)
         self.is_trained = True
-        print(f"✅ Model trained on {len(emails)} emails")
+        print(f"Model trained on {len(emails)} emails")
     
     def predict(self, email):
         """Predict if an email is phishing or legitimate"""
@@ -67,7 +67,7 @@ class PhishingDetector:
             pickle.dump(self.model, f)
         with open(vectorizer_path, 'wb') as f:
             pickle.dump(self.vectorizer, f)
-        print(f"✅ Model saved to {model_path} and {vectorizer_path}")
+        print(f"Model saved to {model_path} and {vectorizer_path}")
     
     def load_model(self, model_path='trained_model.pkl', vectorizer_path='vectorizer.pkl'):
         """Load a trained model and vectorizer"""
@@ -77,7 +77,7 @@ class PhishingDetector:
             with open(vectorizer_path, 'rb') as f:
                 self.vectorizer = pickle.load(f)
             self.is_trained = True
-            print(f"✅ Model loaded")
+            print(f"Model loaded")
         except FileNotFoundError:
-            print(f"⚠️  Model files not found.")
+            print(f"Model files not found.")
             self.is_trained = False
