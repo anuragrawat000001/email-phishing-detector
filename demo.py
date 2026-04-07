@@ -1,11 +1,12 @@
 from detector import PhishingDetector
 import pandas as pd
 
-# 🔥 Rule-based phishing detection (optional but useful)
+
+# 🔥 Rule-based phishing detection
 def check_phishing_indicators(email):
     suspicious_keywords = [
-        "urgent", "verify", "suspend", "click here", "login", 
-        "password", "bank", "account locked", "confirm", 
+        "urgent", "verify", "suspend", "click here", "login",
+        "password", "bank", "account locked", "confirm",
         "update", "security alert", "limited time", "act now",
         "winner", "prize", "claim", "free", "lottery"
     ]
@@ -30,30 +31,28 @@ def check_phishing_indicators(email):
 
 def main():
     print("="*70)
-    print("EMAIL PHISHING DETECTOR - LIVE DEMO")
+    print("EMAIL PHISHING DETECTOR - HYBRID MODEL (ML + RULE)")
     print("="*70)
-    
+
     detector = PhishingDetector()
-    
-    # 🔥 TRAIN USING KAGGLE DATASET
+
+    # 🔥 TRAIN MODEL
     print("\n📚 Training model using dataset...")
 
-    df = pd.read_csv("CEAS_08.csv")   # make sure this file is in same folder
+    df = pd.read_csv("CEAS_08.csv")
 
     emails = []
     labels = []
 
-    # 🔥 HANDLE DIFFERENT DATASET FORMATS
     for _, row in df.iterrows():
         if 'subject' in df.columns and 'body' in df.columns:
             subject = str(row['subject'])
             body = str(row['body'])
         else:
-            # if dataset has only 'text'
             subject = str(row.get('text', ''))
             body = ""
 
-        label = int(row['label'])  # must be 0 or 1
+        label = int(row['label'])
 
         emails.append({
             'subject': subject,
@@ -68,30 +67,23 @@ def main():
 
     print(f"✅ Model trained on {len(emails)} emails!")
 
-    # INTERACTIVE MENU
-    print("\n" + "="*70)
-    print("INTERACTIVE TEST")
-    print("1. Enter email manually")
-    print("2. Load email from file (.txt/.eml)")
-    print("Type 'exit' anytime to quit")
-    print("="*70)
-
+    # 🔥 MENU
     while True:
-        choice = input("\nChoose option (1/2): ")
+        print("\n" + "="*50)
+        print("1. Enter email manually")
+        print("2. Load email from file")
+        print("Type 'exit' to quit")
+        print("="*50)
+
+        choice = input("Choose option: ")
 
         if choice.lower() == "exit":
             break
 
-        # 🔹 Manual input
         if choice == "1":
             subject = input("Subject: ")
-            if subject.lower() == "exit": break
-
             body = input("Body: ")
-            if body.lower() == "exit": break
-
             sender = input("Sender: ")
-            if sender.lower() == "exit": break
 
             email = {
                 'subject': subject,
@@ -99,10 +91,8 @@ def main():
                 'sender': sender
             }
 
-        # 🔹 File input
         elif choice == "2":
-            file_path = input("Enter full file path: ")
-            if file_path.lower() == "exit": break
+            file_path = input("Enter file path: ")
 
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
@@ -115,34 +105,35 @@ def main():
                 }
 
             except Exception as e:
-                print(f"❌ Error reading file: {e}")
+                print(f"❌ Error: {e}")
                 continue
 
         else:
-            print("❌ Invalid option. Choose 1 or 2.")
+            print("❌ Invalid choice")
             continue
 
-        # 🔍 ML Prediction
+        # 🔍 ML RESULT
         result = detector.predict(email)
 
-        # 🔍 Rule-based detection (optional)
+        # 🔍 RULE RESULT
         rules = check_phishing_indicators(email)
 
-        print("\n🔍 Result:", result['prediction'])
+        print("\n🔍 ML Prediction:", result['prediction'])
         print(f"Confidence: {result['confidence']*100:.2f}%")
 
+        # 🔥 SHOW RULE FLAGS
         if rules['score'] > 0:
-            print("\n⚠️ Indicators:")
+            print("\n⚠️ Rule-Based Indicators:")
             if rules['keywords']:
                 print("   Keywords:", ", ".join(rules['keywords']))
             if rules['domains']:
                 print("   Domains:", ", ".join(rules['domains']))
 
-        # 🔥 FINAL DECISION (use ML mainly)
-        if result['is_phishing']:
-            print("\n🚨 PHISHING EMAIL DETECTED")
+        # 🔥 HYBRID DECISION (IMPORTANT CHANGE)
+        if result['is_phishing'] or rules['score'] >= 2:
+            print("\n🚨 FINAL RESULT: PHISHING EMAIL")
         else:
-            print("\n✅ LEGITIMATE EMAIL")
+            print("\n✅ FINAL RESULT: SAFE EMAIL")
 
         again = input("\nTest another email? (y/n): ")
         if again.lower() != 'y':
