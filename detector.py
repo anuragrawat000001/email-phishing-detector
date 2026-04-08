@@ -9,13 +9,13 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 
 class PhishingDetector:
     def __init__(self):
-        # Vectorizer
+        # Text vectorizer
         self.vectorizer = TfidfVectorizer(max_features=2000, stop_words='english')
 
         # Models
         self.nb = MultinomialNB()
         self.lr = LogisticRegression(max_iter=1000)
-        self.rf = RandomForestClassifier(n_estimators=100)
+        self.rf = RandomForestClassifier(n_estimators=50, max_depth=10, random_state=42)
 
         # Ensemble model
         self.model = VotingClassifier(
@@ -37,8 +37,9 @@ class PhishingDetector:
         body = email.get('body', '').lower()
         sender = email.get('sender', '').lower()
 
-        # Clean text
         text = f"{subject} {body} {sender}"
+
+        # Clean text
         text = re.sub(r"http\S+", "", text)
         text = re.sub(r"[^a-zA-Z]", " ", text)
 
@@ -55,11 +56,11 @@ class PhishingDetector:
             "bank", "account", "click", "suspend"
         ]
 
-        score = sum(word in text for word in keywords)
+        score = sum(re.search(rf"\b{word}\b", text) is not None for word in keywords)
         return score / len(keywords)
 
     # ----------------------------
-    # TRAIN
+    # TRAIN MODEL
     # ----------------------------
     def train(self, emails, labels):
         features = [self.extract_features(e) for e in emails]
@@ -76,40 +77,57 @@ class PhishingDetector:
     def predict(self, email):
         if not self.is_trained:
             self.load_model()
+            if not self.is_trained:
+                raise Exception("Model not trained. Train or load model first.")
 
         features = self.extract_features(email)
         X = self.vectorizer.transform([features])
 
         pred = self.model.predict(X)[0]
-        probs = self.model.predict_proba(X)[0]
+
+        # Safe probability handling
+        if hasattr(self.model, "predict_proba"):
+            probs = self.model.predict_proba(X)[0]
+        else:
+            probs = [1 - pred, pred]
 
         rule = self.rule_score(email)
 
-        # Hybrid score
+        # Hybrid scoring
         final_score = 0.7 * probs[1] + 0.3 * rule
-
         result = "PHISHING" if final_score > 0.5 else "LEGITIMATE"
+
+        # Explainability (reasons)
+        keywords = ["urgent", "verify", "login", "password", "bank", "click"]
+        reasons = [word for word in keywords if word in features]
 
         return {
             "prediction": result,
             "ml_score": float(probs[1]),
             "rule_score": float(rule),
             "final_score": float(final_score),
-            "confidence": float(max(probs))
+            "confidence": float(max(probs)),
+            "reasons": reasons
         }
 
     # ----------------------------
-    # BATCH PREDICTION (MULTIPLE INPUTS)
+    # BATCH PREDICTION
     # ----------------------------
     def predict_batch(self, emails):
         if not self.is_trained:
             self.load_model()
+            if not self.is_trained:
+                raise Exception("Model not trained.")
 
         features = [self.extract_features(e) for e in emails]
         X = self.vectorizer.transform(features)
 
         preds = self.model.predict(X)
-        probs = self.model.predict_proba(X)
+
+        if hasattr(self.model, "predict_proba"):
+            probs = self.model.predict_proba(X)
+        else:
+            probs = [[1 - p, p] for p in preds]
 
         results = []
 
@@ -119,12 +137,16 @@ class PhishingDetector:
 
             result = "PHISHING" if final_score > 0.5 else "LEGITIMATE"
 
+            keywords = ["urgent", "verify", "login", "password", "bank", "click"]
+            reasons = [word for word in keywords if word in features[i]]
+
             results.append({
                 "email_index": i + 1,
                 "prediction": result,
                 "ml_score": float(probs[i][1]),
                 "rule_score": float(rule),
-                "final_score": float(final_score)
+                "final_score": float(final_score),
+                "reasons": reasons
             })
 
         return results
@@ -145,19 +167,22 @@ class PhishingDetector:
         }
 
     # ----------------------------
-    # SAVE / LOAD
+    # SAVE MODEL
     # ----------------------------
     def save_model(self):
         pickle.dump(self.model, open("model.pkl", "wb"))
         pickle.dump(self.vectorizer, open("vectorizer.pkl", "wb"))
-        print("Model saved")
+        print("Model saved successfully")
 
+    # ----------------------------
+    # LOAD MODEL
+    # ----------------------------
     def load_model(self):
         try:
             self.model = pickle.load(open("model.pkl", "rb"))
             self.vectorizer = pickle.load(open("vectorizer.pkl", "rb"))
             self.is_trained = True
-            print("Model loaded")
-        except:
-            print("Model not found")
+            print("Model loaded successfully")
+        except FileNotFoundError:
+            print("Model files not found. Please train first.")
             self.is_trained = False
