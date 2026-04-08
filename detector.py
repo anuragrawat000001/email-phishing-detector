@@ -6,14 +6,13 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
-from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 
 class PhishingDetector:
     def __init__(self):
         # ----------------------------
-        # ADVANCED TF-IDF
+        # TF-IDF (IMPROVED)
         # ----------------------------
         self.vectorizer = TfidfVectorizer(
             max_features=4000,
@@ -22,27 +21,30 @@ class PhishingDetector:
         )
 
         # ----------------------------
-        # MODELS
+        # MODELS (OPTIMIZED)
         # ----------------------------
         self.nb = MultinomialNB()
-        self.lr = LogisticRegression(max_iter=2000, class_weight='balanced')
+
+        self.lr = LogisticRegression(
+            max_iter=1000,
+            class_weight='balanced'
+        )
+
         self.rf = RandomForestClassifier(
-            n_estimators=120,
+            n_estimators=50,   # reduced for speed
             max_depth=12,
             class_weight='balanced',
             random_state=42
         )
-        self.svm = SVC(probability=True)
 
         # ----------------------------
-        # ENSEMBLE
+        # ENSEMBLE (FAST + STRONG)
         # ----------------------------
         self.model = VotingClassifier(
             estimators=[
                 ('nb', self.nb),
                 ('lr', self.lr),
-                ('rf', self.rf),
-                ('svm', self.svm)
+                ('rf', self.rf)
             ],
             voting='soft'
         )
@@ -50,7 +52,7 @@ class PhishingDetector:
         self.is_trained = False
 
     # ----------------------------
-    # FEATURE EXTRACTION (IMPROVED)
+    # FEATURE EXTRACTION
     # ----------------------------
     def extract_features(self, email):
         subject = email.get('subject', '').lower()
@@ -59,11 +61,11 @@ class PhishingDetector:
 
         text = f"{subject} {body} {sender}"
 
-        # Clean
+        # Clean text
         text = re.sub(r"http\S+", " URL ", text)
         text = re.sub(r"[^a-zA-Z]", " ", text)
 
-        # Engineered features
+        # Add simple features
         features = []
 
         if "http" in body:
@@ -75,13 +77,10 @@ class PhishingDetector:
         if any(word in body for word in ["urgent", "verify", "login"]):
             features.append("SUSPICIOUS_WORD")
 
-        if any(char.isdigit() for char in body):
-            features.append("HAS_NUMBERS")
-
         return text + " " + " ".join(features)
 
     # ----------------------------
-    # RULE SCORE (IMPROVED)
+    # RULE SCORE
     # ----------------------------
     def rule_score(self, email):
         text = self.extract_features(email)
@@ -123,34 +122,17 @@ class PhishingDetector:
 
         rule = self.rule_score(email)
 
-        # ----------------------------
-        # ADVANCED HYBRID SCORING
-        # ----------------------------
+        # Hybrid scoring
         combined = (0.6 * probs[1]) + (0.4 * rule)
 
         result = "PHISHING" if combined > 0.5 else "LEGITIMATE"
-
-        # ----------------------------
-        # EXPLANATION
-        # ----------------------------
-        reasons = []
-
-        if probs[1] > 0.7:
-            reasons.append("ML detected phishing pattern")
-
-        if rule > 0.3:
-            reasons.append("Suspicious keywords found")
-
-        if "URL" in features:
-            reasons.append("Contains URL")
 
         return {
             "prediction": result,
             "ml_score": float(probs[1]),
             "rule_score": float(rule),
             "final_score": float(combined),
-            "confidence": float(max(probs)),
-            "reasons": reasons
+            "confidence": float(max(probs))
         }
 
     # ----------------------------
@@ -178,27 +160,10 @@ class PhishingDetector:
             results.append({
                 "email_index": i + 1,
                 "prediction": result,
-                "ml_score": float(probs[i][1]),
-                "rule_score": float(rule),
-                "final_score": float(combined)
+                "score": float(combined)
             })
 
         return results
-
-    # ----------------------------
-    # EVALUATE
-    # ----------------------------
-    def evaluate(self, emails, labels):
-        features = [self.extract_features(e) for e in emails]
-        X = self.vectorizer.transform(features)
-        preds = self.model.predict(X)
-
-        return {
-            "accuracy": accuracy_score(labels, preds),
-            "precision": precision_score(labels, preds, zero_division=0),
-            "recall": recall_score(labels, preds, zero_division=0),
-            "f1_score": f1_score(labels, preds, zero_division=0)
-        }
 
     # ----------------------------
     # SAVE
