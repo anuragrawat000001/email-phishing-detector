@@ -2,82 +2,162 @@ import pickle
 import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
 
 class PhishingDetector:
     def __init__(self):
-        self.vectorizer = TfidfVectorizer(max_features=1000, stop_words='english')
-        self.model = MultinomialNB()
+        # Vectorizer
+        self.vectorizer = TfidfVectorizer(max_features=2000, stop_words='english')
+
+        # Models
+        self.nb = MultinomialNB()
+        self.lr = LogisticRegression(max_iter=1000)
+        self.rf = RandomForestClassifier(n_estimators=100)
+
+        # Ensemble model
+        self.model = VotingClassifier(
+            estimators=[
+                ('nb', self.nb),
+                ('lr', self.lr),
+                ('rf', self.rf)
+            ],
+            voting='soft'
+        )
+
         self.is_trained = False
-    
+
+    # ----------------------------
+    # FEATURE EXTRACTION
+    # ----------------------------
     def extract_features(self, email):
-        """Extract and preprocess email text features"""
         subject = email.get('subject', '').lower()
         body = email.get('body', '').lower()
         sender = email.get('sender', '').lower()
-        combined_text = f"{subject} {body} {sender}"
-        return combined_text
-    
+
+        # Clean text
+        text = f"{subject} {body} {sender}"
+        text = re.sub(r"http\S+", "", text)
+        text = re.sub(r"[^a-zA-Z]", " ", text)
+
+        return text
+
+    # ----------------------------
+    # RULE-BASED SCORE
+    # ----------------------------
+    def rule_score(self, email):
+        text = self.extract_features(email)
+
+        keywords = [
+            "urgent", "verify", "login", "password",
+            "bank", "account", "click", "suspend"
+        ]
+
+        score = sum(word in text for word in keywords)
+        return score / len(keywords)
+
+    # ----------------------------
+    # TRAIN
+    # ----------------------------
     def train(self, emails, labels):
-        """Train the phishing detector model"""
-        features = [self.extract_features(email) for email in emails]
+        features = [self.extract_features(e) for e in emails]
+
         X = self.vectorizer.fit_transform(features)
         self.model.fit(X, labels)
+
         self.is_trained = True
         print(f"Model trained on {len(emails)} emails")
-    
+
+    # ----------------------------
+    # SINGLE PREDICTION
+    # ----------------------------
     def predict(self, email):
-        """Predict if an email is phishing or legitimate"""
         if not self.is_trained:
             self.load_model()
-        
+
         features = self.extract_features(email)
         X = self.vectorizer.transform([features])
-        prediction = self.model.predict(X)[0]
-        probabilities = self.model.predict_proba(X)[0]
-        
-        confidence = max(probabilities)
-        phishing_score = probabilities[1]
-        legitimate_score = probabilities[0]
-        
+
+        pred = self.model.predict(X)[0]
+        probs = self.model.predict_proba(X)[0]
+
+        rule = self.rule_score(email)
+
+        # Hybrid score
+        final_score = 0.7 * probs[1] + 0.3 * rule
+
+        result = "PHISHING" if final_score > 0.5 else "LEGITIMATE"
+
         return {
-            'is_phishing': bool(prediction),
-            'prediction': 'PHISHING' if prediction else 'LEGITIMATE',
-            'confidence': confidence,
-            'phishing_score': phishing_score,
-            'legitimate_score': legitimate_score
+            "prediction": result,
+            "ml_score": float(probs[1]),
+            "rule_score": float(rule),
+            "final_score": float(final_score),
+            "confidence": float(max(probs))
         }
-    
-    def evaluate(self, emails, labels):
-        """Evaluate model performance"""
-        features = [self.extract_features(email) for email in emails]
+
+    # ----------------------------
+    # BATCH PREDICTION (MULTIPLE INPUTS)
+    # ----------------------------
+    def predict_batch(self, emails):
+        if not self.is_trained:
+            self.load_model()
+
+        features = [self.extract_features(e) for e in emails]
         X = self.vectorizer.transform(features)
-        predictions = self.model.predict(X)
-        
+
+        preds = self.model.predict(X)
+        probs = self.model.predict_proba(X)
+
+        results = []
+
+        for i, email in enumerate(emails):
+            rule = self.rule_score(email)
+            final_score = 0.7 * probs[i][1] + 0.3 * rule
+
+            result = "PHISHING" if final_score > 0.5 else "LEGITIMATE"
+
+            results.append({
+                "email_index": i + 1,
+                "prediction": result,
+                "ml_score": float(probs[i][1]),
+                "rule_score": float(rule),
+                "final_score": float(final_score)
+            })
+
+        return results
+
+    # ----------------------------
+    # EVALUATION
+    # ----------------------------
+    def evaluate(self, emails, labels):
+        features = [self.extract_features(e) for e in emails]
+        X = self.vectorizer.transform(features)
+        preds = self.model.predict(X)
+
         return {
-            'accuracy': accuracy_score(labels, predictions),
-            'precision': precision_score(labels, predictions, zero_division=0),
-            'recall': recall_score(labels, predictions, zero_division=0),
-            'f1_score': f1_score(labels, predictions, zero_division=0)
+            "accuracy": accuracy_score(labels, preds),
+            "precision": precision_score(labels, preds, zero_division=0),
+            "recall": recall_score(labels, preds, zero_division=0),
+            "f1_score": f1_score(labels, preds, zero_division=0)
         }
-    
-    def save_model(self, model_path='trained_model.pkl', vectorizer_path='vectorizer.pkl'):
-        """Save the trained model and vectorizer"""
-        with open(model_path, 'wb') as f:
-            pickle.dump(self.model, f)
-        with open(vectorizer_path, 'wb') as f:
-            pickle.dump(self.vectorizer, f)
-        print(f"Model saved to {model_path} and {vectorizer_path}")
-    
-    def load_model(self, model_path='trained_model.pkl', vectorizer_path='vectorizer.pkl'):
-        """Load a trained model and vectorizer"""
+
+    # ----------------------------
+    # SAVE / LOAD
+    # ----------------------------
+    def save_model(self):
+        pickle.dump(self.model, open("model.pkl", "wb"))
+        pickle.dump(self.vectorizer, open("vectorizer.pkl", "wb"))
+        print("Model saved")
+
+    def load_model(self):
         try:
-            with open(model_path, 'rb') as f:
-                self.model = pickle.load(f)
-            with open(vectorizer_path, 'rb') as f:
-                self.vectorizer = pickle.load(f)
+            self.model = pickle.load(open("model.pkl", "rb"))
+            self.vectorizer = pickle.load(open("vectorizer.pkl", "rb"))
             self.is_trained = True
-            print(f"Model loaded")
-        except FileNotFoundError:
-            print(f"Model files not found.")
+            print("Model loaded")
+        except:
+            print("Model not found")
             self.is_trained = False
