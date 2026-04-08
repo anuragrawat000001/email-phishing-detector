@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 
 # ----------------------------
-# RULE-BASED DETECTION
+# RULE-BASED DETECTION (IMPROVED)
 # ----------------------------
 def check_phishing_indicators(email):
     suspicious_keywords = [
@@ -19,14 +19,14 @@ def check_phishing_indicators(email):
 
     text = (email['subject'] + " " + email['body'] + " " + email['sender']).lower()
 
-    keyword_hits = [word for word in suspicious_keywords if word in text]
+    keyword_hits = [word for word in suspicious_keywords if re.search(rf"\b{word}\b", text)]
     domain_hits = [domain for domain in suspicious_domains if domain in text]
 
     return len(keyword_hits) + len(domain_hits), keyword_hits, domain_hits
 
 
 # ----------------------------
-# URL ANALYSIS
+# URL ANALYSIS (FIXED)
 # ----------------------------
 def analyze_urls(email):
     text = (email['subject'] + " " + email['body']).lower()
@@ -36,7 +36,8 @@ def analyze_urls(email):
     flags = []
 
     for url in urls:
-        domain = urlparse(url).netloc
+        parsed = urlparse(url if url.startswith("http") else "http://" + url)
+        domain = parsed.netloc
 
         if re.match(r"\d+\.\d+\.\d+\.\d+", domain):
             score += 2
@@ -158,6 +159,9 @@ def main():
             print("\n🔍 ML:", ml["prediction"])
             print("Confidence:", round(ml["confidence"]*100, 2), "%")
 
+            if ml.get("reasons"):
+                print("🧠 ML Reasons:", ml["reasons"])
+
             if keywords:
                 print("⚠️ Keywords:", keywords)
 
@@ -173,7 +177,8 @@ def main():
             if header_flags:
                 print("📧 Header Issues:", header_flags)
 
-            if ml["prediction"] == "PHISHING" or total >= 4:
+            # FINAL DECISION (IMPROVED)
+            if ml["final_score"] > 0.6 or total >= 4:
                 print("\n🚨 FINAL: PHISHING")
             else:
                 print("\n✅ FINAL: SAFE")
@@ -202,10 +207,18 @@ def main():
             print("\n=== RESULTS ===")
 
             for i, res in enumerate(results):
-                print(f"Email {i+1}: {res['prediction']} ({round(res['final_score']*100,2)}%)")
+                rule_score, _, _ = check_phishing_indicators(emails[i])
+                url_score, _, _ = analyze_urls(emails[i])
+                header_score, _ = analyze_headers(emails[i])
+
+                total = rule_score + url_score + header_score
+
+                final = "PHISHING" if res["final_score"] > 0.6 or total >= 4 else "SAFE"
+
+                print(f"Email {i+1}: {final} ({round(res['final_score']*100,2)}%)")
 
         else:
-            print("Invalid choice")
+            print("❌ Invalid choice")
 
 
 if __name__ == "__main__":
