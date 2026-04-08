@@ -1,5 +1,4 @@
 from detector import PhishingDetector
-import pandas as pd
 import re
 import requests
 from urllib.parse import urlparse
@@ -8,22 +7,27 @@ from email import policy
 
 
 # ----------------------------
+# DOMAIN REPUTATION
+# ----------------------------
+def check_domain_reputation(domain):
+    suspicious = ["phish", "scam", "malware"]
+    return any(word in domain for word in suspicious)
+
+
+# ----------------------------
 # RULE-BASED DETECTION
 # ----------------------------
 def check_phishing_indicators(email_data):
-    suspicious_keywords = [
-        "urgent", "verify", "login", "password", "bank",
-        "confirm", "update", "free", "winner"
-    ]
+    keywords = ["urgent", "verify", "login", "password", "bank", "free"]
 
     text = (email_data['subject'] + " " + email_data['body']).lower()
-    hits = [w for w in suspicious_keywords if re.search(rf"\b{w}\b", text)]
+    hits = [w for w in keywords if re.search(rf"\b{w}\b", text)]
 
     return len(hits), hits
 
 
 # ----------------------------
-# URL ANALYSIS
+# URL ANALYSIS (ADVANCED)
 # ----------------------------
 def analyze_urls(email_data):
     text = (email_data['subject'] + " " + email_data['body']).lower()
@@ -31,6 +35,8 @@ def analyze_urls(email_data):
 
     score = 0
     flags = []
+
+    sender_domain = email_data['sender'].split("@")[-1] if "@" in email_data['sender'] else ""
 
     for url in urls:
         parsed = urlparse(url if url.startswith("http") else "http://" + url)
@@ -40,9 +46,25 @@ def analyze_urls(email_data):
             score += 2
             flags.append("IP-based URL")
 
-        if "bit.ly" in domain or "tinyurl" in domain:
+        if any(x in domain for x in ["bit.ly", "tinyurl"]):
             score += 2
             flags.append("Shortened URL")
+
+        if url.startswith("http://"):
+            score += 1
+            flags.append("Not secure (HTTP)")
+
+        if len(url) > 75:
+            score += 1
+            flags.append("Long URL")
+
+        if sender_domain and sender_domain not in domain:
+            score += 2
+            flags.append("Sender mismatch")
+
+        if check_domain_reputation(domain):
+            score += 3
+            flags.append("Bad domain reputation")
 
     return score, flags
 
@@ -71,6 +93,57 @@ def analyze_headers(email_data):
 
 
 # ----------------------------
+# FINAL DECISION ENGINE
+# ----------------------------
+def final_decision(ml, r_score, u_score, h_score):
+    total = r_score + u_score + h_score
+
+    combined = (0.6 * ml["final_score"]) + (0.4 * (total / 10))
+
+    if combined > 0.75:
+        level = "HIGH RISK"
+    elif combined > 0.5:
+        level = "MEDIUM RISK"
+    else:
+        level = "LOW RISK"
+
+    label = "PHISHING" if combined > 0.5 else "SAFE"
+
+    return label, level, combined
+
+
+# ----------------------------
+# PROCESS EMAILS (CORE ENGINE)
+# ----------------------------
+def process_emails(detector, emails):
+    print("\n=== RESULTS ===\n")
+
+    for i, email_data in enumerate(emails):
+        ml = detector.predict(email_data)
+
+        r, keywords = check_phishing_indicators(email_data)
+        u, url_flags = analyze_urls(email_data)
+        h, header_flags = analyze_headers(email_data)
+
+        label, level, score = final_decision(ml, r, u, h)
+
+        print(f"\n📧 Email {i+1}")
+        print("ML:", ml["prediction"])
+        print("Confidence:", round(ml["confidence"] * 100, 2), "%")
+        print("Risk Level:", level)
+
+        if keywords:
+            print("⚠️ Keywords:", keywords)
+        if url_flags:
+            print("⚠️ URL Issues:", url_flags)
+        if header_flags:
+            print("📧 Header Issues:", header_flags)
+
+        print("🚨 FINAL:", label)
+        print("-" * 40)
+
+
+# ----------------------------
 # LOAD FROM URLS
 # ----------------------------
 def load_emails_from_urls(urls):
@@ -87,9 +160,8 @@ def load_emails_from_urls(urls):
                 "sender": "unknown",
                 "headers": {}
             })
-
-        except Exception as e:
-            print("Error loading:", url)
+        except:
+            print("❌ Failed:", url)
 
     return emails
 
@@ -108,9 +180,8 @@ def load_emails_from_eml(paths):
             subject = str(msg["subject"])
             sender = str(msg["from"])
 
-            # Extract body
+            body = ""
             if msg.is_multipart():
-                body = ""
                 for part in msg.walk():
                     if part.get_content_type() == "text/plain":
                         body += part.get_content()
@@ -129,9 +200,8 @@ def load_emails_from_eml(paths):
                     "dkim": "pass"
                 }
             })
-
-        except Exception as e:
-            print("Error reading file:", path)
+        except:
+            print("❌ Error reading:", path)
 
     return emails
 
@@ -146,8 +216,8 @@ def main():
     while True:
         print("\n1. Single Email")
         print("2. Batch Manual")
-        print("3. Batch from URLs")
-        print("4. Batch from .eml files")
+        print("3. 5 Emails from URLs")
+        print("4. 5 Emails from .eml files")
         print("exit")
 
         choice = input("Choice: ")
@@ -155,8 +225,8 @@ def main():
         if choice == "exit":
             break
 
-        # ---------------- SINGLE ----------------
-        if choice == "1":
+        # SINGLE
+        elif choice == "1":
             email_data = {
                 "subject": input("Subject: "),
                 "body": input("Body: "),
@@ -164,63 +234,44 @@ def main():
                 "headers": {
                     "from": input("From: "),
                     "reply_to": input("Reply-To: "),
-                    "spf": input("SPF (pass/fail): "),
-                    "dkim": input("DKIM (pass/fail): ")
+                    "spf": input("SPF: "),
+                    "dkim": input("DKIM: ")
                 }
             }
 
-            ml = detector.predict(email_data)
-            r_score, _ = check_phishing_indicators(email_data)
-            u_score, _ = analyze_urls(email_data)
-            h_score, _ = analyze_headers(email_data)
+            process_emails(detector, [email_data])
 
-            total = r_score + u_score + h_score
-
-            print("\nPrediction:", ml["prediction"])
-
-            if ml["final_score"] > 0.6 or total >= 4:
-                print("🚨 PHISHING")
-            else:
-                print("✅ SAFE")
-
-        # ---------------- MANUAL BATCH ----------------
+        # MANUAL BATCH
         elif choice == "2":
             emails = []
-
             for i in range(5):
+                print(f"\nEmail {i+1}")
                 emails.append({
                     "subject": input("Subject: "),
                     "body": input("Body: "),
                     "sender": input("Sender: ")
                 })
 
-            results = detector.predict_batch(emails)
+            process_emails(detector, emails)
 
-            for i, r in enumerate(results):
-                print(f"Email {i+1}: {r['prediction']}")
-
-        # ---------------- URL BATCH ----------------
+        # URL BATCH (FINAL)
         elif choice == "3":
+            print("\nEnter 5 URLs:\n")
             urls = [input(f"URL {i+1}: ") for i in range(5)]
 
             emails = load_emails_from_urls(urls)
-            results = detector.predict_batch(emails)
+            process_emails(detector, emails)
 
-            for i, r in enumerate(results):
-                print(f"URL Email {i+1}: {r['prediction']}")
-
-        # ---------------- EML FILE BATCH ----------------
+        # EML BATCH (FINAL)
         elif choice == "4":
-            paths = [input(f"File path {i+1}: ") for i in range(5)]
+            print("\nEnter 5 .eml file paths:\n")
+            paths = [input(f"File {i+1}: ") for i in range(5)]
 
             emails = load_emails_from_eml(paths)
-            results = detector.predict_batch(emails)
-
-            for i, r in enumerate(results):
-                print(f"File Email {i+1}: {r['prediction']}")
+            process_emails(detector, emails)
 
         else:
-            print("Invalid option")
+            print("❌ Invalid option")
 
 
 if __name__ == "__main__":
