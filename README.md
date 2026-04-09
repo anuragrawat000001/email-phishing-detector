@@ -44,14 +44,17 @@ This system classifies emails as:
 
 ## 📂 Project Structure
 
+    ## 📂 Project Structure
+
     phishing-detector/
-    ├── data/
-    ├── train.py
-    ├── detector.py
-    ├── app.py
-    ├── requirements.txt
-    ├── README.md
-    └── LICENSE
+    ├── data/                # Dataset folder
+    ├── .gitignore           # Git ignored files
+    ├── LICENSE              # License file
+    ├── README.md            # Documentation
+    ├── demo.py              # Demo script to test model
+    ├── detector.py          # Phishing detection logic
+    ├── train.py             # Model training script
+    └── requirements.txt     # Dependencies
 
 ---
 
